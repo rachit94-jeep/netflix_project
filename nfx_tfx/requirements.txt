@@ -1,0 +1,14 @@
+rpds-py==2026.6.3
+s3transfer==0.19.1
+six==1.17.0
+snowflake-connector-python==4.6.0
+snowplow-tracker==1.1.0
+sortedcontainers==2.4.0
+sqlparse==0.5.5
+text-unidecode==1.3
+tomlkit==0.15.0
+typing-inspection==0.4.2
+typing_extensions==4.16.0
+tzdata==2026.3
+urllib3==2.7.0
+zipp==4.1.0
