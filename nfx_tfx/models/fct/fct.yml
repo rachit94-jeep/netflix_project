@@ -1,0 +1,65 @@
+version: 2
+
+models:
+  - name: fct_genome_scores
+    description: Movie-tag relevance scores filtered to relevance > 0 and rounded to 4 decimal places.
+    columns:
+      - name: movie_id
+        description: Foreign key to dim_movies.
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_movies')
+              field: movies_id
+      - name: tag_id
+        description: Foreign key to dim_genome_tags.
+        tests:
+          - not_null
+      - name: relevance
+        description: Relevance score between a movie and a tag, rounded to 4 dp.
+        tests:
+          - not_null
+
+  - name: fct_movie_ratings_incr
+    description: Incremental fact table of user movie ratings. Deduped on (user_id, movie_id). Only new rows are loaded on incremental runs.
+    columns:
+      - name: user_id
+        description: Foreign key to dim_users.
+        tests:
+          - not_null
+      - name: movie_id
+        description: Foreign key to dim_movies.
+        tests:
+          - not_null
+      - name: rating
+        description: Numeric rating given by the user (0.5–5.0 scale).
+        tests:
+          - not_null
+      - name: rating_timestamp
+        description: Timestamp of when the rating was submitted.
+        tests:
+          - not_null
+
+  - name: fct_movie_tag_genome
+    description: Denormalized fact table joining movies, genome tags, and relevance scores via the ephemeral dim_genome_movie_tag.
+    columns:
+      - name: movie_id
+        description: Foreign key to dim_movies.
+        tests:
+          - not_null
+      - name: tag_id
+        description: Foreign key to dim_genome_tags.
+        tests:
+          - not_null
+      - name: title
+        description: Cleaned movie title (INITCAP).
+        tests:
+          - not_null
+      - name: tag
+        description: Cleaned genome tag label (INITCAP).
+        tests:
+          - not_null
+      - name: relevance
+        description: Relevance score between the movie and the tag.
+        tests:
+          - not_null
