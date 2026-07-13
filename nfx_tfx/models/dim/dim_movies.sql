@@ -5,6 +5,6 @@ WITH SRC_DIM_MOVIES AS (
 
 SELECT movies_id,
        INITCAP(TRIM(title)) as movie_title,
-       SPLIT(genres,'|') as genre_array,
+       {{ split_array('genres') }} as genre_array,
        genres
-       FROM SRC_DIM_MOVIES
+FROM SRC_DIM_MOVIES

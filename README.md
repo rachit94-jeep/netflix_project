@@ -20,11 +20,11 @@ Snowflake (MOVIELENS database)
 netflix_project/
 ├── nfx_tfx/                        # dbt project root
 │   ├── models/
-│   │   ├── staging/                # Source-aligned views
+│   │   ├── staging/                # Source-aligned views / tables
 │   │   │   ├── source.yml
 │   │   │   ├── src_movies.sql
-│   │   │   ├── src_ratings.sql
-│   │   │   ├── src_tags.sql
+│   │   │   ├── src_ratings.sql     (table)
+│   │   │   ├── src_tags.sql        (table)
 │   │   │   ├── src_links.sql
 │   │   │   ├── src_genome_tags.sql
 │   │   │   └── src_genome_scores.sql
@@ -40,9 +40,12 @@ netflix_project/
 │   ├── seeds/
 │   │   └── movie_release_date.csv  # 10-row lookup: movie_id → release_date
 │   ├── snapshots/
-│   │   └── customer_snapshot.sql   # SCD Type 2 on customers_scd
+│   │   ├── customer_snapshot.sql   # SCD Type 2 on customers_scd (simple)
+│   │   └── tag_snapshot.sql        # SCD Type 2 on src_tags (composite key + hard-delete)
 │   ├── macros/                     # (empty)
 │   ├── tests/                      # (empty)
+│   ├── packages.yml                # External package declarations
+│   ├── package-lock.yml
 │   ├── dbt_project.yml
 │   └── requirements.txt
 └── .venv/                          # Python virtual environment
@@ -55,22 +58,32 @@ netflix_project/
 | `raw` | MOVIELENS | RAW | `raw_movies`, `raw_ratings` |
 | `analytics` | ANALYTICS | RAW | `customers_scd` |
 
-Raw tables not yet registered in `source.yml`: `raw_tags`, `raw_links`, `raw_genome_tags`, `raw_genome_scores`.
+> **Note:** `raw_tags`, `raw_links`, `raw_genome_tags`, and `raw_genome_scores` are not yet registered in `source.yml` — their staging models reference them via hard-coded three-part names (`MOVIELENS.RAW.*`).
+
+## Packages
+
+Declared in `packages.yml`, installed via `dbt deps`:
+
+| Package | Version |
+|---|---|
+| `dbt-labs/dbt_utils` | 1.4.1 |
+
+`dbt_utils` is used in `tag_snapshot.sql` to generate a surrogate key via `{{ dbt_utils.generate_surrogate_key([...]) }}`.
 
 ## Models
 
-### Staging Layer (`STAGING` schema — views)
+### Staging Layer (`STAGING` schema)
 
-Thin wrappers that rename columns to snake_case and cast timestamps.
+Thin wrappers that rename columns to snake_case and cast timestamps. Two models override the default view materialization to **table**.
 
-| Model | Description |
-|---|---|
-| `src_movies` | Movie titles and pipe-delimited genres |
-| `src_ratings` | User ratings with unix timestamp conversion |
-| `src_tags` | User-applied tags with timestamp conversion |
-| `src_links` | IMDB and TMDB ID mappings per movie |
-| `src_genome_tags` | Tag vocabulary from the genome dataset |
-| `src_genome_scores` | Movie-tag relevance scores |
+| Model | Materialization | Description |
+|---|---|---|
+| `src_movies` | View | Movie titles and pipe-delimited genres |
+| `src_ratings` | **Table** | User ratings with unix timestamp conversion |
+| `src_tags` | **Table** | User-applied tags with timestamp conversion |
+| `src_links` | View | IMDB and TMDB ID mappings per movie |
+| `src_genome_tags` | View | Tag vocabulary from the genome dataset |
+| `src_genome_scores` | View | Movie-tag relevance scores |
 
 ### Dimension Layer (`DEV` schema — tables)
 
@@ -97,7 +110,10 @@ Thin wrappers that rename columns to snake_case and cast timestamps.
 
 ### Snapshot
 
-`customer_snapshot.sql` — SCD Type 2 snapshot of `ANALYTICS.RAW.customers_scd`, keyed on `customer_id`, using a timestamp strategy on `updated_at`. Output written to the `SNAPSHOTS` schema.
+| Snapshot | Strategy | Unique Key | Description |
+|---|---|---|---|
+| `customer_snapshot` | timestamp (`updated_at`) | `customer_id` | SCD Type 2 snapshot of `ANALYTICS.RAW.customers_scd`. Full row history written to `SNAPSHOTS` schema. |
+| `tag_snapshot` | timestamp (`tag_timestamp`) | `[user_id, movie_id, tag]` | SCD Type 2 snapshot of `src_tags` (LIMIT 100). Composite unique key with a surrogate key generated via `dbt_utils.generate_surrogate_key`. Hard-delete invalidation enabled (`invalidate_hard_deletes = True`). |
 
 ## Snowflake Database Setup
 
@@ -281,6 +297,9 @@ nfx_tfx:
 ```bash
 cd nfx_tfx
 
+# Install packages
+dbt deps
+
 # Load seed data
 dbt seed
 
@@ -303,7 +322,9 @@ dbt run --select fct_movie_ratings_incr --full-refresh
 
 - **Layered modelling** — staging → dim → fct separation
 - **Materializations** — views, tables, incremental, ephemeral
+- **Per-model materialization overrides** — `src_ratings` and `src_tags` override the staging default to `table`
 - **Incremental models** — loading only new rows using `MAX(rating_timestamp)`
 - **Seeds** — loading static lookup data into Snowflake
-- **Snapshots** — SCD Type 2 change tracking with dbt
+- **Snapshots (SCD Type 2)** — simple timestamp strategy (`customer_snapshot`) and advanced composite-key snapshot with hard-delete invalidation and surrogate key generation (`tag_snapshot`)
+- **External packages** — `dbt-labs/dbt_utils` for surrogate key generation via `generate_surrogate_key`
 - **Source definitions** — declaring raw tables in `source.yml`
